@@ -1,0 +1,15 @@
+[server]
+kind				= "tokio"
+
+[tokio]
+worker_threads		= 5
+blocking_threads	= 50
+keep_alive			= 60
+stack_size			= 3145728
+address				= "127.0.0.1"
+port				= "8000"
+
+[app]
+app_name	= "xxx"
+version		= "1.0.0"
+

@@ -1,0 +1,21 @@
+[package]
+name = "ibis"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# ffライブラリ
+ff = { path = "../ff" }
+
+# 非同期ランタイム
+tokio = { version = "1", features = ["full"] }
+
+# HTPP
+hyper = "0.14"
+
+# 日付時刻処理
+chrono = "0.4"
+
+# シリアライズ・デシリアライズ
+serde = "1"
+
