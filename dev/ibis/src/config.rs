@@ -5,7 +5,6 @@ use std::fs;
 use std::io::{BufReader, Read};
 
 use anyhow::Result;
-use tracing::{ info, warn };
 
 
 //=============================================================================
@@ -16,6 +15,7 @@ pub(crate) struct IbisConfig
 {
     pub server_config: IbisServerType,
     pub app_config: IbisAppConfig,
+    pub logger_config: IbisLoggerType,
 }
 
 impl IbisConfig
@@ -41,8 +41,8 @@ impl IbisConfig
             Err(e) =>
             {
                 // ファイルが見つからなければデフォルト値を使う
-                warn!("can't read a config file: {}", e);
-                info!("use default config");
+                println!("[WARN] can't read a config file: {}", e);
+                println!("[INFO] use default config");
                 return IbisConfig::default();
             },
         };
@@ -54,8 +54,8 @@ impl IbisConfig
             Err(e) =>
             {
                 // 設定が読み込めなければデフォルト値を使う
-                warn!("can't deserialize config: {}", e);
-                info!("use default config");
+                println!("[WARN] can't deserialize config: {}", e);
+                println!("[INFO] use default config");
                 return IbisConfig::default();
             },
         };
@@ -72,7 +72,7 @@ impl IbisConfig
                     None =>
                     {
                         // kindが読み込めなかったらデフォルト値を返す
-                        info!("use default application config");
+                        println!("[INFO] use default server config");
                         "tokio"
                     },
                 };
@@ -85,9 +85,9 @@ impl IbisConfig
                         Ok(tokio_config) => tokio_config,
                         Err(e) =>
                         {
-                            // [server]セクションが読み込めなければデフォルト値を使う
-                            warn!("can't deserialize application config: {}", e);
-                            info!("use default application config");
+                            // [tokio]セクションが読み込めなければデフォルト値を使う
+                            println!("[WARN] can't deserialize tokio config: {}", e);
+                            println!("[INFO] use default tokio config");
                             IbisServerTokioConfig::default()
                         },
                     };
@@ -96,17 +96,17 @@ impl IbisConfig
                 }
                 else
                 {
-                    // [server]セクションの値が不正ならばデフォルト値を使う
-                    warn!("invalid server kind ({})", server_type);
-                    info!("use default application config");
+                    // [kind]セクションの値が不正ならばデフォルト値を使う
+                    println!("[WARN] invalid server kind ({})", server_type);
+                    println!("[INFO] use default server config");
                     IbisServerType::default()
                 }
             },
             None =>
             {
                 // 設定ファイルに[server]セクションがなければデフォルト値を使う
-                warn!("not found [app] section in {}", file);
-                info!("use default application config");
+                println!("[WARN] not found [server] section in {}", file);
+                println!("[INFO] use default server config");
                 IbisServerType::default()
             }
         };
@@ -122,8 +122,8 @@ impl IbisConfig
                     Err(e) =>
                     {
                         // [app]セクションが読み込めなければデフォルト値を使う
-                        warn!("can't deserialize application config: {}", e);
-                        info!("use default application config");
+                        println!("[WARN] can't deserialize application config: {}", e);
+                        println!("[INFO] use default application config");
                         IbisAppConfig::default()
                     },
                 }
@@ -131,9 +131,60 @@ impl IbisConfig
             None =>
             {
                 // 設定ファイルに[app]セクションがなければデフォルト値を使う
-                warn!("not found [app] section in {}", file);
-                info!("use default application config");
+                println!("[WARN] not found [app] section in {}", file);
+                println!("[INFO] use default application config");
                 IbisAppConfig::default()
+            }
+        };
+
+        // logger_config
+        let logger_config = match config.get("logger")
+        {
+            Some(s) =>
+            {
+                // [logger]セクションのkindから使用するロガーのタイプを指定
+                let logger_type = match s["kind"].as_str()
+                {
+                    Some(s) => s,
+                    None =>
+                    {
+                        // kindが読み込めなかったらデフォルト値を返す
+                        println!("[INFO] use default logger config");
+                        "tracing"
+                    },
+                };
+
+                // kindがtracingであれば
+                if logger_type == "tracing"
+                {
+                    let tracing_config = match toml::from_str(&config["tracing"].to_string())
+                    {
+                        Ok(logger_type) => logger_type,
+                        Err(e) =>
+                        {
+                            // [tracing]セクションが読み込めなければデフォルト値を使う
+                            println!("[WARN] can't deserialize tracing config: {}", e);
+                            println!("[INFO] use default tracing config");
+                            IbisLoggerTracingConfig::default()
+                        },
+                    };
+
+                    IbisLoggerType::Tracing(tracing_config)
+                }
+                else
+                {
+                    // [kind]セクションの値が不正ならばデフォルト値を使う
+                    println!("[WARN] invalid logger kind ({})", logger_type);
+                    println!("[INFO] use default logger config");
+                    IbisLoggerType::default()
+                }
+            },
+            None =>
+            {
+                // 設定ファイルに[logger]セクションがなければデフォルト値を使う
+                println!("[WARN] not found [logger] section in {}", file);
+                println!("[INFO] use default logger config");
+                IbisLoggerType::default()
             }
         };
 
@@ -141,6 +192,7 @@ impl IbisConfig
         {
             server_config,
             app_config,
+            logger_config,
         }
     }
 
@@ -263,6 +315,51 @@ impl IbisConfig
             }
         }
     }
+
+    //=========================================================================
+    // ロガーのlog_levelを取得
+    //=========================================================================
+    pub(crate) fn get_logger_log_level(&self) -> &str
+    {
+        let log_level = match &self.logger_config
+        {
+            IbisLoggerType::Tracing(tracing_config) =>
+            {
+                &tracing_config.log_level
+            }
+        };
+        &log_level
+    }
+
+    //=========================================================================
+    // ロガーのlogfile_pathを取得
+    //=========================================================================
+    pub(crate) fn get_logger_logfile_path(&self) -> &str
+    {
+        let logfile_path = match &self.logger_config
+        {
+            IbisLoggerType::Tracing(tracing_config) =>
+            {
+                &tracing_config.logfile_path
+            }
+        };
+        &logfile_path
+    }
+
+    //=========================================================================
+    // ロガーのlogfile_nameを取得
+    //=========================================================================
+    pub(crate) fn get_logger_logfile_name(&self) -> &str
+    {
+        let logfile_name = match &self.logger_config
+        {
+            IbisLoggerType::Tracing(tracing_config) =>
+            {
+                &tracing_config.logfile_name
+            }
+        };
+        &logfile_name
+    }
 }
 
 impl Default for IbisConfig
@@ -276,6 +373,7 @@ impl Default for IbisConfig
         {
             server_config: IbisServerType::default(),
             app_config: IbisAppConfig::default(),
+            logger_config: IbisLoggerType::default(),
         }
     }
 }
@@ -359,4 +457,53 @@ impl Default for IbisAppConfig
         }
     }
 }
+
+
+//=============================================================================
+// IbisLoggerType
+//=============================================================================
+#[derive(Debug)]
+pub(crate) enum IbisLoggerType
+{
+    Tracing(IbisLoggerTracingConfig),
+}
+
+impl Default for IbisLoggerType
+{
+    //=========================================================================
+    // 初期値の設定
+    //=========================================================================
+    fn default() -> Self
+    {
+        Self::Tracing(IbisLoggerTracingConfig::default())
+    }
+}
+
+//=============================================================================
+// IbisLoggerTracingConfig
+//=============================================================================
+#[derive(Debug, Deserialize)]
+pub(crate) struct IbisLoggerTracingConfig
+{
+    pub log_level: String,
+    pub logfile_path: String,
+    pub logfile_name: String,
+}
+
+impl Default for IbisLoggerTracingConfig
+{
+    //=========================================================================
+    // 初期値の設定
+    //=========================================================================
+    fn default() -> Self
+    {
+        Self
+        {
+            log_level: "debug".to_string(),
+            logfile_path: "./output/logs".to_string(),
+            logfile_name: "app_log".to_string(),
+        }
+    }
+}
+
 

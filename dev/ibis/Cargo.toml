@@ -18,7 +18,8 @@ anyhow = "1"
 
 # Tokioのロガーライブラリ
 tracing = "0.1"
-tracing-subscriber = "0.2"
+tracing-subscriber = { version = "0.3", features = ["time"] }
+tracing-appender = "0.2"
 
 # 日付時刻処理
 chrono = "0.4"
